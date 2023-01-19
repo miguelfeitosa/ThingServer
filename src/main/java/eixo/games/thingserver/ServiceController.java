@@ -43,13 +43,18 @@ public class ServiceController {
      * @see #wrapPayload
      */
     @PutMapping(path="/api/hold")
-    //mfeitosa test empty string creation here on the required=true
-    Map<String,Object> holdThing(@RequestParam(required = true) String thing) {
-        //Trusting required=true above to always return non blank String
-        //Is this a good idea? Should we test isBlank
-        //DISCUSSION POINT: Relying on Spring default validation changes significantly how our API is consumed
+    Map<String,Object> holdThing(@RequestParam(required = true) String thing,HttpServletResponse response) {
+        //Trusting required=true above to always return non-blank String did not work as an empty string is passed and is indeed a valid argument for Spring but not for us
+        //DISCUSSION POINT: Relying on Spring default validation changes significantly how our API is consumed, call without a parameter at all and verify
+        //adding validation
+        if(StringUtils.isBlank(thing)) {
+            //HTTP return code signifies a client error but possibly not ideal
+            return wrapPayload(null,String.format("blank thing=%s not allowed", thing),HttpServletResponse.SC_REQUESTED_RANGE_NOT_SATISFIABLE,0, response);
+        }
+        //How hard is it to allow empty, null and blank strings? how much would the code change?
+        //And how much harder would it make the operation of this service?
         thingSaverFacade.hold(thing);
-        return wrapPayload(String.format("%s held",thing),1);
+        return wrapPayload(String.format("thing=%s held",thing),1);
     }
 
     /**
@@ -126,6 +131,7 @@ public class ServiceController {
      * @return wrapped payload
      * @see #wrapPayload(String, int) 
      */
+    @GetMapping(path="/api/all/unique/count")
     Map<String,Object> howManyUniqueThings() {
         int count = thingSaverFacade.getAllThingsUnique().size();
         return wrapPayload(String.format("server contains %s unique things", count), count);
@@ -133,12 +139,12 @@ public class ServiceController {
 
     /**
      *  Utility method to render a wrapped payload to marshall as a response
-     * @param message
-     * @param error
-     * @param responseCode
-     * @param count
-     * @param response
-     * @return
+     * @param message a human readable convenience message to display on success
+     * @param error a human readable convenience error message to display on failure as defined in each individual call
+     * @param responseCode an HTTP Response Code that best represents the result of this interaction
+     * @param count A count of affected entities by this operation
+     * @param response HttpServletResponse tied to this interaction
+     * @return a map to be later rendered as JSON
      */
     private Map<String,Object> wrapPayload(String message, String error, int responseCode, int count, HttpServletResponse response) {
         if(responseCode<0) throw new IllegalArgumentException(String.format("method received invalid http responseCode=%s",responseCode));
@@ -155,9 +161,7 @@ public class ServiceController {
 
     /**
      * Utility method to render a wrapped payload to marshall as a response
-     * @param message
-     * @param count
-     * @return
+     * @see #wrapPayload(String, String, int, int, HttpServletResponse) 
      */
     private Map<String,Object> wrapPayload(String message, int count) {
         return wrapPayload(message,null, HttpServletResponse.SC_OK, count,null);
